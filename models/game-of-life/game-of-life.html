@@ -1,46 +1,218 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <link rel="icon" type="image/png" href="img/R-pentomino.png" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" type="img/png" href="../../img/R-pentomino.png" />
   <title>Game of Life</title>
   <style>
     * {
       box-sizing: border-box;
     }
+
     body {
       margin: 0;
       padding: 0;
       font-family: system-ui, -apple-system, sans-serif;
       line-height: 1.6;
     }
+
     .container {
       max-width: 960px;
       margin: 0 auto;
       padding: 20px;
-      background-color:#fdfdfd;
+      background-color: #fdfdfd;
     }
+
     pre {
       background: #f4f4f4;
       padding: 12px;
       overflow-x: auto;
       border-radius: 4px;
     }
+
     code {
       font-family: ui-monospace, SFMono-Regular, monospace;
     }
+
     a {
       text-decoration: none;
     }
 
+    #CACanvas {
+      display: block;
+      margin-left: 10%;
+      margin-right: 10%;
+      width: 80%;
+      aspect-ratio: 1 / 1;
+    }
   </style>
 </head>
+
 <body>
   <div class="container">
     <h1>Game of Life</h1>
+    <canvas id="CACanvas"></canvas>
     <p>Content goes here.</p>
     <pre><code>console.log('hello');</code></pre>
   </div>
+  <script type="module">
+    import CACanvas from "../../js/ca-canvas.js";
+    import Grid, { Cell } from "../../js/cellular-automata.js";
+
+
+
+    let gridInstance; // Reference to the cellular automata grid
+    let running = false; // Simulation control flag
+    let speed = 25; // Milliseconds between iterations (lower = faster)
+    let loopStarted = false
+
+    const canvasElement = document.getElementById("CACanvas");
+    const caCanvas = new CACanvas(canvasElement, 50);
+
+    /*
+        Vote class
+    */
+
+
+    class GoL extends Cell {
+      constructor(ypos, xpos) {
+        super(ypos, xpos);
+      }
+
+      iterate() {
+        let live = 0;
+        const len = this.neighbours.length;
+        for (let i = 0; i < len; i++) {
+          if (this.neighbours[i].getOccupant() == "L") {
+            live++;
+          }
+        }
+        // apply Conway's rules
+        const current = this.getOccupant();
+        let next = "D";
+
+        if (current === "L" && (live === 2 || live === 3)) {
+          next = "L";
+        } else if (current !== "L" && live === 3) {
+          next = "L";
+        }
+        this.setOccupant(next);
+        
+      }
+    }
+
+
+
+
+    /*
+        main
+    */
+
+
+    const R_PENTO = [
+      [0, 1], [0, 2],   // top row
+      [1, 0], [1, 1],   // middle row
+      [2, 1]            // bottom row
+    ];
+
+    // Wait for CSS to be applied before measuring
+    function init() {
+      caCanvas.resizeAndReset();
+      gridInstance = new Grid(caCanvas.cols, caCanvas.rows);
+
+      // Create agent in each cell with randomized initial strategy
+      const rows = gridInstance.rows;
+      const cols = gridInstance.cols;
+
+      for (let y = 0; y < rows; y++) {
+        for (let x = 0; x < cols; x++) {
+          const newCell = new GoL(y, x);
+          gridInstance.cells[y][x] = newCell;
+          newCell.setOccupantNow("D");
+        }
+      }
+
+      // 6. seed R‑pentomino in the centre
+      const cx = Math.floor(cols / 2);
+      const cy = Math.floor(rows / 2);
+
+      for (let [dx, dy] of R_PENTO) {
+        const x = cx + dx;
+        const y = cy + dy;
+        if (x >= 0 && x < cols && y >= 0 && y < rows) {
+          gridInstance.getCell(y,x).setOccupantNow("L");
+        }
+      }
+      gridInstance.setNeighbours();
+      drawGrid();
+      running = true;
+
+      // Start animation loop only once
+      if (!loopStarted) {
+        loopStarted = true;
+        timeLoop();
+      }
+    }
+
+    function iterate() {
+      for (let y = 0; y < gridInstance.rows; y++) {
+        for (let x = 0; x < gridInstance.cols; x++) {
+          gridInstance.getCell(y, x).iterate();
+        }
+      }
+      Cell.update();
+      drawGrid();
+    }
+
+    // Initialize when DOM + CSS are ready
+    if (document.readyState === 'complete') {
+      init();
+    } else {
+      window.addEventListener('load', init);
+    }
+
+    // Update grid on window resize (affects % sizing)
+    window.addEventListener('resize', () => {
+      caCanvas.resizeAndReset();
+      drawGrid();
+    });
+
+
+    /**
+     * Animation loop using setTimeout for controllable speed
+     * Continues indefinitely while running flag is true
+     */
+    function timeLoop() {
+      if (running) {
+        iterate();
+      }
+      setTimeout(timeLoop, speed);
+    }
+
+
+    function drawGrid() {
+      caCanvas.clear();
+
+      const yMax = caCanvas.rows;
+      const xMax = caCanvas.cols;
+      for (let y = 0; y < yMax; y++) {
+        for (let x = 0; x < xMax; x++) {
+          let colour = '#dddddd'
+          const cell = gridInstance.cells[y][x];
+          if (cell.getOccupant() == 'L') {
+            colour = '#000000'
+          }
+          caCanvas.drawSquareAt(x, y, colour, true);
+        }
+      }
+    }
+
+
+
+
+  </script>
 </body>
+
 </html>
