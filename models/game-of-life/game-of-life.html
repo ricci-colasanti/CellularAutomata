@@ -65,11 +65,11 @@
 
     let gridInstance; // Reference to the cellular automata grid
     let running = false; // Simulation control flag
-    let speed = 25; // Milliseconds between iterations (lower = faster)
+    let speed = 5; // Milliseconds between iterations (lower = faster)
     let loopStarted = false
 
     const canvasElement = document.getElementById("CACanvas");
-    const caCanvas = new CACanvas(canvasElement, 50);
+    const caCanvas = new CACanvas(canvasElement, 120);
 
     /*
         Vote class
@@ -204,7 +204,7 @@
           if (cell.getOccupant() == 'L') {
             colour = '#000000'
           }
-          caCanvas.drawSquareAt(x, y, colour);
+          caCanvas.drawSquareAt(x, y, colour, true);
         }
       }
     }
