@@ -15,6 +15,7 @@ Each model runs in the browser with no dependencies.
    git clone https://git@github.com:ricci-colasanti/CellularAutomata.git
    ```
 2. Open any `index.html` in the `models/` folder in your browser.
+3. Or open page https://ricci-colasanti.github.io/CellularAutomata/
 
 ## Project Structure
 
