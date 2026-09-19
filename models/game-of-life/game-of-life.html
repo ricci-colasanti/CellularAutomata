@@ -19,7 +19,7 @@
     }
 
     .container {
-      max-width: 960px;
+      max-width: 60%;
       margin: 0 auto;
       padding: 20px;
       background-color: #fdfdfd;
@@ -42,9 +42,9 @@
 
     #CACanvas {
       display: block;
-      margin-left: 15%;
-      margin-right: 15%;
-      width: 70%;
+      margin-left: 10%;
+      margin-right: 10%;
+      width: 80%;
       aspect-ratio: 1 / 1;
     }
   </style>
@@ -65,14 +65,14 @@
 
     let gridInstance; // Reference to the cellular automata grid
     let running = false; // Simulation control flag
-    let speed = 5; // Milliseconds between iterations (lower = faster)
+    let speed = 1; // Milliseconds between iterations (lower = faster)
     let loopStarted = false
 
     const canvasElement = document.getElementById("CACanvas");
     const caCanvas = new CACanvas(canvasElement, 169);
 
     /*
-        Vote class
+        GOL class
     */
 
 
@@ -85,18 +85,16 @@
         let live = 0;
         const len = this.neighbours.length;
         for (let i = 0; i < len; i++) {
-          if (this.neighbours[i].getOccupant() == "L") {
-            live++;
-          }
+            live+=this.neighbours[i].getOccupant()
         }
         // apply Conway's rules
         const current = this.getOccupant();
-        let next = "D";
+        let next = 0;
 
-        if (current === "L" && (live === 2 || live === 3)) {
-          next = "L";
-        } else if (current !== "L" && live === 3) {
-          next = "L";
+        if (current === 1 && (live === 2 || live === 3)) {
+          next = 1;
+        } else if (current !== 1 && live === 3) {
+          next = 1;
         }
         this.setOccupant(next);
 
@@ -130,11 +128,11 @@
         for (let x = 0; x < cols; x++) {
           const newCell = new GoL(y, x);
           gridInstance.cells[y][x] = newCell;
-          newCell.setOccupantNow("D");
+          newCell.setOccupantNow(0);
         }
       }
 
-      // 6. seed R‑pentomino in the centre
+      // // 6. seed R‑pentomino in the centre
       const cx = Math.floor(cols / 2);
       const cy = Math.floor(rows / 2);
 
@@ -142,7 +140,7 @@
         const x = cx + dx;
         const y = cy + dy;
         if (x >= 0 && x < cols && y >= 0 && y < rows) {
-          gridInstance.getCell(y,x).setOccupantNow("L");
+          gridInstance.getCell(y,x).setOccupantNow(1);
         }
       }
       gridInstance.setNeighbours();
@@ -200,7 +198,7 @@
       for (let y = 0; y < yMax; y++) {
         for (let x = 0; x < xMax; x++) {
           const cell = gridInstance.cells[y][x];
-          if (cell.getOccupant() == 'L') {
+          if (cell.getOccupant() == 1) {
             caCanvas.quickDrawSquareAt(x, y);
           }
         }
