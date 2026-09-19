@@ -74,6 +74,11 @@ export default class CACanvas {
    *
    * @returns {void}
    */
+
+  setColour(colour) {
+    this.ctx.fillStyle = colour;
+  }
+
   resizeAndReset() {
     // Step 1: Get rendered dimensions AFTER CSS has been applied.
     // clientWidth/clientHeight reflect what the user sees (includes margins,
@@ -106,7 +111,7 @@ export default class CACanvas {
     // This prepares a clean slate for drawing the new grid.
     this.clear("#eeeeee");
   }
-  
+
   // Optional: Helper to attach resize listener
   listenForResize(callback) {
     window.addEventListener('resize', callback);
@@ -156,6 +161,15 @@ export default class CACanvas {
         this.cellSize,
       );
     }
+  }
+
+  quickDrawSquareAt(x, y) {
+    this.ctx.fillRect(
+      x * this.cellSize,
+      y * this.cellSize,
+      this.cellSize,
+      this.cellSize,
+    );
   }
 
   /**

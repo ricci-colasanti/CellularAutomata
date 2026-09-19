@@ -42,9 +42,9 @@
 
     #CACanvas {
       display: block;
-      margin-left: 10%;
-      margin-right: 10%;
-      width: 80%;
+      margin-left: 15%;
+      margin-right: 15%;
+      width: 70%;
       aspect-ratio: 1 / 1;
     }
   </style>
@@ -69,7 +69,7 @@
     let loopStarted = false
 
     const canvasElement = document.getElementById("CACanvas");
-    const caCanvas = new CACanvas(canvasElement, 120);
+    const caCanvas = new CACanvas(canvasElement, 169);
 
     /*
         Vote class
@@ -194,17 +194,15 @@
 
     function drawGrid() {
       caCanvas.clear();
-
+      caCanvas.setColour('#000000')
       const yMax = caCanvas.rows;
       const xMax = caCanvas.cols;
       for (let y = 0; y < yMax; y++) {
         for (let x = 0; x < xMax; x++) {
-          let colour = '#dddddd'
           const cell = gridInstance.cells[y][x];
           if (cell.getOccupant() == 'L') {
-            colour = '#000000'
+            caCanvas.quickDrawSquareAt(x, y);
           }
-          caCanvas.drawSquareAt(x, y, colour, true);
         }
       }
     }
