@@ -22,11 +22,11 @@
             justify-content: center; 
             align-items: center; 
             height: 100vh; 
-            background: #999; 
+            background: #ddd; 
         }
         /* Canvas border for visibility during development */
         canvas { 
-            border: 2px solid #000; 
+            border: 2px solid #444; 
         }
     </style>
 </head>
@@ -37,6 +37,14 @@
     <canvas id="glcanvas" width="800" height="600"></canvas>
     
     <script>
+    // // Initialize when DOM + CSS are ready
+    // if (document.readyState === 'complete') {
+    //   init();
+    // } else {
+    //   window.addEventListener('load', init);
+    // }
+
+
         // =================================================================
         // SECTION 1: CELLULAR AUTOMATA STATE DATA
         // =================================================================
@@ -90,7 +98,7 @@
          * 
          * PRESET COLOURS:
          */
-        const LIVE_COLOUR = [0.0, 0.0, 0.0, 1.0];  // Pure black
+        const LIVE_COLOUR = [0.1, 0.1, 0.1, 1.0];  // Pure black
         // const LIVE_COLOUR = [1.0, 0.0, 0.0, 1.0];  // Red
         // const LIVE_COLOUR = [0.0, 1.0, 0.0, 1.0];  // Green
         // const LIVE_COLOUR = [0.0, 0.0, 1.0, 1.0];  // Blue
