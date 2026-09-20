@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <!-- ============================================================ -->
+    <!-- DOCUMENTATION: Cellular Automata WebGL Batch Renderer          -->
+    <!-- Author: Generated with Lumo                                   -->
+    <!-- Purpose: Render 2D grid-based CA simulations efficiently      -->
+    <!-- Features:                                                     -->
+    <!--   - Auto-detects grid dimensions from 2D array               -->
+    <!--   - Preserves square cell aspect ratio on any canvas        -->
+    <!--   - Configurable live cell colour                          -->
+    <!--   - Single draw call batch rendering (efficient)           -->
+    <!--   - Handles corner cases (clipping, orientation)            -->
+    <!-- ============================================================ -->
+    
+    <title>Cellular Automata - Batch Renderer</title>
+    <style>
+        /* Page layout: centre canvas in viewport with dark background */
+        body { 
+            margin: 0; 
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
+            height: 100vh; 
+            background: #999; 
+        }
+        /* Canvas border for visibility during development */
+        canvas { 
+            border: 2px solid #000; 
+        }
+    </style>
+</head>
+<body>
+    <!-- Canvas element: WebGL renders into this DOM element -->
+    <!-- width/height attributes define the framebuffer resolution -->
+    <!-- (separate from CSS display size) -->
+    <canvas id="glcanvas" width="800" height="600"></canvas>
+    
+    <script>
+        // =================================================================
+        // SECTION 1: CELLULAR AUTOMATA STATE DATA
+        // =================================================================
+        /**
+         * The grid represents the current state of the cellular automaton.
+         * 2D array where:
+         *   - grid[row][col] === 1 → cell is ALIVE
+         *   - grid[row][col] === 0 → cell is DEAD
+         * 
+         * IMPORTANT: Array indexing convention:
+         *   - row = 0 is the TOP of the screen
+         *   - col = 0 is the LEFT of the screen
+         * 
+         * GRID SIZE IS AUTO-DETECTED:
+         * Change the number of rows/columns here, and everything adjusts
+         * automatically (cell size, aspect ratio, positioning).
+         * 
+         * EXAMPLE: 10×12 grid with cells alive in all 4 corners:
+         */
+        let grid = [
+            [1,0,0,0,0,0,0,0,0,0,0,1],  // row 0: corners alive
+            [0,0,0,1,0,0,0,0,0,0,0,0],
+            [0,0,1,0,0,0,0,0,0,0,0,0],
+            [0,1,0,0,0,0,0,0,0,0,0,0],
+            [0,0,0,0,0,0,0,0,0,0,0,0],
+            [0,0,0,0,0,0,0,0,0,0,0,0],
+            [0,0,0,0,0,0,0,0,0,0,0,0],
+            [0,0,0,0,0,0,0,0,0,0,0,0],
+            [0,0,0,0,0,0,0,0,0,0,0,0],
+            [1,0,0,0,0,0,0,0,0,0,0,1]   // row 9: corners alive
+        ];
+
+        // =================================================================
+        // SECTION 2: AUTO-DETECT GRID DIMENSIONS
+        // =================================================================
+        /**
+         * Dynamically detect grid dimensions from the array itself.
+         * This allows you to change grid size without modifying other code.
+         */
+        const GRID_ROWS = grid.length;       // Number of rows (vertical count)
+        const GRID_COLS = grid[0].length;    // Number of columns (horizontal count)
+        
+        // =================================================================
+        // SECTION 3: RENDERING CONFIGURATION
+        // =================================================================
+        /**
+         * Configure the appearance of LIVING cells.
+         * 
+         * Format: [R, G, B, A] - RGBA colour components
+         * Range: 0.0 to 1.0 (floating-point, not 0-255)
+         * 
+         * PRESET COLOURS:
+         */
+        const LIVE_COLOUR = [0.0, 0.0, 0.0, 1.0];  // Pure black
+        // const LIVE_COLOUR = [1.0, 0.0, 0.0, 1.0];  // Red
+        // const LIVE_COLOUR = [0.0, 1.0, 0.0, 1.0];  // Green
+        // const LIVE_COLOUR = [0.0, 0.0, 1.0, 1.0];  // Blue
+        // const LIVE_COLOUR = [0.43, 0.31, 0.71, 1.0];  // Purple (#6d4aff)
+        // const LIVE_COLOUR = [1.0, 1.0, 1.0, 1.0];  // White
+        
+        /**
+         * Number of floats per vertex in position buffer.
+         * We store 2D positions, so this is always 2.
+         */
+        const FLOATS_PER_VERTEX = 2;
+
+        // =================================================================
+        // SECTION 4: WEBGL CONTEXT SETUP
+        // =================================================================
+        /**
+         * Obtain WebGL rendering context from the canvas element.
+         * Falls back gracefully if not supported.
+         */
+        const canvas = document.getElementById('glcanvas');
+        const gl = canvas.getContext('webgl');
+        
+        if (!gl) {
+            // Critical: WebGL not available - alert user and halt execution
+            alert('WebGL not supported! This browser/environment requires WebGL.');
+            throw new Error('WebGL initialization failed');
+        }
+
+        // =================================================================
+        // SECTION 5: SHADER PROGRAMS (GPU CODE)
+        // =================================================================
+        /**
+         * SHADERS are small programs that run on the GPU.
+         * 
+         * VERTEX SHADER:
+         *   - Runs once per vertex (6 vertices per cell quad)
+         *   - Transforms 2D positions to clip space ([-1,+1])
+         *   - Applies aspect ratio scaling
+         * 
+         * FRAGMENT SHADER:
+         *   - Runs once per pixel (fragment) inside each triangle
+         *   - Outputs final colour (RGBA)
+         *   - In this example, all live cells use the same colour
+         * 
+         * CLIP SPACE:
+         *   - WebGL's native coordinate system
+         *   - X: -1 (left) to +1 (right)
+         *   - Y: -1 (bottom) to +1 (top)
+         *   - Z: -1 (near) to +1 (far) - unused in 2D
+         *   - Any geometry outside this range is CLIPPED (discarded)
+         */
+        
+        // Vertex shader GLSL source code
+        const vertexShaderSource = `
+            attribute vec2 a_position;    // Input: 2D position from JS buffer
+            uniform vec2 u_scale;          // Input: Scale factors from JS
+            
+            void main() {
+                // Transform position by scale factor to fit canvas aspect ratio
+                // Multiplying preserves aspect while preventing clipping
+                gl_Position = vec4(a_position * u_scale, 0.0, 1.0);
+                
+                // Explanation of vec4 constructor:
+                //   x = a_position.x * u_scale.x
+                //   y = a_position.y * u_scale.y
+                //   z = 0.0 (flat 2D, no depth)
+                //   w = 1.0 (homogeneous coordinate)
+            }
+        `;
+
+        // Fragment shader GLSL source code
+        const fragmentShaderSource = `
+            // Precision qualifier (required for mobile/embedded GPUs)
+            precision mediump float;
+            
+            // Uniform passed from JavaScript to set live cell colour
+            uniform vec4 u_colour;  // RGBA vector from JS
+            
+            void main() {
+                // Output the configured colour for every fragment
+                // All live cells use identical colour (no texture/lighting here)
+                gl_FragColor = u_colour;
+            }
+        `;
+
+        // =================================================================
+        // SECTION 6: SHADER COMPILATION HELPER
+        // =================================================================
+        /**
+         * Helper function to compile individual shaders.
+         * Handles errors and logs compilation issues to console.
+         * 
+         * @param {WebGLRenderingContext} gl - WebGL context
+         * @param {GLenum} type - gl.VERTEX_SHADER or gl.FRAGMENT_SHADER
+         * @param {string} source - GLSL shader source code
+         * @returns {WebGLShader|null} Compiled shader or null on failure
+         */
+        function createShader(gl, type, source) {
+            // Create shader object
+            const shader = gl.createShader(type);
+            
+            // Attach source code
+            gl.shaderSource(shader, source);
+            
+            // Compile
+            gl.compileShader(shader);
+            
+            // Check for compilation errors
+            if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                // Log detailed error message including source snippet
+                const errorMsg = `Shader compile error (${type === gl.VERTEX_SHADER ? 'vertex' : 'fragment'}):`;
+                console.error(errorMsg, gl.getShaderInfoLog(shader));
+                console.error('Shader source:', source);
+                
+                // Clean up failed shader
+                gl.deleteShader(shader);
+                return null;
+            }
+            
+            return shader;
+        }
+
+        // =================================================================
+        // SECTION 7: COMPILE AND LINK SHADER PROGRAM
+        // =================================================================
+        /**
+         * Compile both shaders and link them into an executable program.
+         * This program will be used for all rendering.
+         */
+        const vertexShader = createShader(gl, gl.VERTEX_SHADER, vertexShaderSource);
+        const fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, fragmentShaderSource);
+
+        // Validate that both shaders compiled successfully
+        if (!vertexShader || !fragmentShader) {
+            throw new Error('Shader compilation failed - see console for details');
+        }
+
+        // Create program object and attach shaders
+        const program = gl.createProgram();
+        gl.attachShader(program, vertexShader);
+        gl.attachShader(program, fragmentShader);
+        
+        // Link program (combines shaders into executable GPU code)
+        gl.linkProgram(program);
+        
+        // Validate program linking
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+            console.error('Program link error:', gl.getProgramInfoLog(program));
+            throw new Error('Shader program linking failed');
+        }
+        
+        // Activate the program for subsequent drawing commands
+        gl.useProgram(program);
+
+        // =================================================================
+        // SECTION 8: ATTRIBUTE AND UNIFORM LOCATIONS
+        // =================================================================
+        /**
+         * Query WebGL for memory locations of shader variables.
+         * 
+         * ATTRIBUTES (input data per vertex):
+         *   - a_position: 2D vertex coordinates
+         * 
+         * UNIFORMS (constant values for entire draw call):
+         *   - u_scale: Scale factors for aspect ratio correction
+         *   - u_colour: RGB colour for live cells
+         */
+        const positionLocation = gl.getAttribLocation(program, 'a_position');
+        const scaleLocation = gl.getUniformLocation(program, 'u_scale');
+        const colourLocation = gl.getUniformLocation(program, 'u_colour');
+
+        // =================================================================
+        // SECTION 9: CELL GEOMETRY CALCULATIONS
+        // =================================================================
+        /**
+         * Calculate dimensions for each cell in clip space.
+         * 
+         * Since clip space spans [-1, +1] on both axes (total range = 2),
+         * dividing by grid dimensions gives the size of each cell.
+         * 
+         * IMPORTANT: X and Y have DIFFERENT cell sizes because the grid
+         * may not be square (e.g., 12 columns × 10 rows).
+         */
+        const CELL_WIDTH = 2.0 / GRID_COLS;    // Horizontal cell span in clip space
+        const CELL_HEIGHT = 2.0 / GRID_ROWS;   // Vertical cell span in clip space
+
+        // =================================================================
+        // SECTION 10: GATHER LIVE CELLS WITH POSITION DATA
+        // =================================================================
+        /**
+         * Scan the grid and collect all ALIVE cells with their positions.
+         * 
+         * Returns: Array of objects with properties:
+         *   - x: Clip-space X coordinate of cell centre
+         *   - y: Clip-space Y coordinate of cell centre (FLIPPED for correct orientation)
+         *   - w: Cell width in clip space
+         *   - h: Cell height in clip space
+         * 
+         * Y-AXIS FLIP EXPLAINED:
+         *   - Arrays: row 0 is TOP
+         *   - WebGL: y = +1 is TOP, y = -1 is BOTTOM
+         *   - Formula: centerY = 1.0 - (row_index * CELL_HEIGHT + HALF_HEIGHT)
+         *   - This maps row 0 → top, last row → bottom
+         */
+        function gatherLiveCells() {
+            const live = [];
+            
+            // Iterate through grid rows (y-axis)
+            for (let row = 0; row < GRID_ROWS; row++) {
+                // Iterate through grid columns (x-axis)
+                for (let col = 0; col < GRID_COLS; col++) {
+                    // Only process ALIVE cells (dead cells are not drawn)
+                    if (grid[row][col] === 1) {
+                        // Calculate X centre position
+                        // -1.0 + (column_index * cell_width) + half_width
+                        // Example: col 0 → -1.0 + 0 + half_width = left edge + half
+                        const centerX = -1.0 + col * CELL_WIDTH + CELL_WIDTH / 2;
+                        
+                        // Calculate Y centre position (FLIPPED)
+                        // 1.0 - (row_index * cell_height + half_height)
+                        // Example: row 0 → 1.0 - half_height = near top
+                        // Example: last row → -1.0 + half_height = near bottom
+                        const centerY = 1.0 - (row * CELL_HEIGHT + CELL_HEIGHT / 2);
+                        
+                        // Store position and dimensions for this live cell
+                        live.push({ 
+                            x: centerX, 
+                            y: centerY, 
+                            w: CELL_WIDTH, 
+                            h: CELL_HEIGHT 
+                        });
+                    }
+                }
+            }
+            
+            return live;
+        }
+
+        // =================================================================
+        // SECTION 11: BATCH RENDER FUNCTION
+        // =================================================================
+        /**
+         * Render all live cells in a single draw call (maximum efficiency).
+         * 
+         * Process:
+         *   1. Build vertex array from live cell positions
+         *   2. Upload to GPU buffer
+         *   3. Set uniform colour
+         *   4. Draw all triangles at once
+         * 
+         * @param {Array} liveCells - Array from gatherLiveCells()
+         */
+        function renderBatch(liveCells) {
+            // Early exit: nothing to draw if grid is empty
+            if (liveCells.length === 0) return;
+            
+            // Build vertex data: 6 vertices per cell (2 triangles = 1 quad)
+            // Each vertex: 2 floats (x, y)
+            // Total: liveCells.length × 6 × 2 floats
+            const vertices = [];
+            
+            for (const cell of liveCells) {
+                const halfW = cell.w / 2;  // Half-width for this cell
+                const halfH = cell.h / 2;  // Half-height for this cell
+                const x = cell.x;          // Centre X
+                const y = cell.y;          // Centre Y
+                
+                // Quad vertices (2 triangles forming a rectangle)
+                // Triangle 1: bottom-left, bottom-right, top-left
+                // Triangle 2: top-left, bottom-right, top-right
+                // (Counter-clockwise winding order)
+                vertices.push(
+                    x - halfW, y - halfH,  // Bottom-left
+                    x + halfW, y - halfH,  // Bottom-right
+                    x - halfW, y + halfH,  // Top-left
+                    
+                    x - halfW, y + halfH,  // Top-left (shared)
+                    x + halfW, y - halfH,  // Bottom-right (shared)
+                    x + halfW, y + halfH   // Top-right
+                );
+            }
+
+            // Convert to typed array for GPU upload
+            const data = new Float32Array(vertices);
+            
+            // Calculate vertex count (each vertex = 2 floats)
+            const vertexCount = vertices.length / FLOATS_PER_VERTEX;
+
+            // Bind buffer to ARRAY_BUFFER target
+            gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+            
+            // Upload vertex data to GPU (DYNAMIC_DRAW = frequently updated)
+            gl.bufferData(gl.ARRAY_BUFFER, data, gl.DYNAMIC_DRAW);
+            
+            // Set uniform: live cell colour
+            gl.uniform4f(colourLocation, ...LIVE_COLOUR);  // Spread operator unpacks array
+            
+            // Execute draw: render all vertices as triangles
+            gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
+        }
+
+        // =================================================================
+        // SECTION 12: BUFFER INITIALIZATION
+        // =================================================================
+        /**
+         * Create GPU buffer for vertex data.
+         * Pre-allocate with placeholder to avoid reallocation later.
+         * Actual data is replaced every frame in renderBatch().
+         */
+        const buffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+        
+        // Allocate 1000 floats initial capacity (~8.3KB)
+        // Will be resized automatically by bufferData() when needed
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(1000), gl.DYNAMIC_DRAW);
+
+        // =================================================================
+        // SECTION 13: BIND VERTEX DATA TO SHADER ATTRIBUTE
+        // =================================================================
+        /**
+         * Configure how vertex data maps to the a_position attribute.
+         * 
+         * Parameters:
+         *   - positionLocation: Shader attribute index
+         *   - 2: 2 floats per vertex (x, y)
+         *   - gl.FLOAT: Data type
+         *   - false: Don't normalize (keep original float values)
+         *   - 0: Stride = 0 means tightly packed (next vertex immediately follows)
+         *   - 0: Byte offset to first attribute in buffer
+         */
+        gl.enableVertexAttribArray(positionLocation);
+        gl.vertexAttribPointer(
+            positionLocation,      // Attribute location
+            FLOATS_PER_VERTEX,     // Components per vertex (2 for x,y)
+            gl.FLOAT,              // Data type
+            false,                 // Normalize flag
+            0,                     // Stride (0 = tightly packed)
+            0                      // Byte offset
+        );
+
+        // =================================================================
+        // SECTION 14: ASPECT RATIO CORRECTION (CRITICAL!)
+        // =================================================================
+        /**
+         * Calculate scale factors to preserve square cells on any canvas shape.
+         * 
+         * PROBLEM:
+         *   - Grid has fixed aspect ratio (cols/rows)
+         *   - Canvas may have different aspect ratio (width/height)
+         *   - Direct mapping stretches/shrinks cells non-uniformly
+         * 
+         * SOLUTION:
+         *   - Fit the shorter dimension to [-1, +1]
+         *   - Scale the longer dimension to match grid aspect
+         *   - Result: cells remain square, with margins on longer side
+         * 
+         * EXAMPLE (800×600 canvas, 12×10 grid):
+         *   - Canvas aspect: 800/600 = 1.333
+         *   - Grid aspect: 12/10 = 1.2
+         *   - Canvas is WIDER than grid
+         *   - Fill Y completely (scaleY = 1.0)
+         *   - Constrain X (scaleX = 1.2/1.333 = 0.9)
+         *   - Result: square cells, left/right margins
+         */
+        const canvasAspect = canvas.width / canvas.height;   // e.g., 1.333
+        const gridAspect = GRID_COLS / GRID_ROWS;            // e.g., 1.2
+        
+        let scaleX, scaleY;
+        
+        if (canvasAspect >= gridAspect) {
+            // Canvas is wider or equal to grid → fit to height
+            scaleY = 1.0;                                           // Fill Y
+            scaleX = gridAspect / canvasAspect;                     // Constrain X
+            // Example: scaleX = 1.2 / 1.333 = 0.9 (90% width)
+        } else {
+            // Canvas is taller than grid → fit to width
+            scaleX = 1.0;                                           // Fill X
+            scaleY = canvasAspect / gridAspect;                     // Constrain Y
+            // Example: scaleY = 0.8 / 1.2 = 0.67 (67% height)
+        }
+        
+        // Send scale factors to vertex shader
+        gl.uniform2f(scaleLocation, scaleX, scaleY);
+
+        // =================================================================
+        // SECTION 15: VIEWPORT AND CLEAR
+        // =================================================================
+        /**
+         * Configure the rendering viewport.
+         * 
+         * Parameters:
+         *   - x, y: Lower-left corner of viewport in pixels (0, 0 = bottom-left)
+         *   - width, height: Size of viewport in pixels
+         * 
+         * MATCHES CANVAS SIZE: Ensures full-resolution rendering.
+         */
+        gl.viewport(0, 0, canvas.width, canvas.height);
+        
+        // Clear background colour
+        // Format: [R, G, B, A] - floating-point (0.0 to 1.0)
+        gl.clearColor(1.0, 1.0, 1.0, 1.0);  // White background
+        
+        // Execute clear operation
+        gl.clear(gl.COLOR_BUFFER_BIT);
+
+        // =================================================================
+        // SECTION 16: DEBUG INFORMATION (CONSOLE LOGS)
+        // =================================================================
+        /**
+         * Print diagnostic information to browser console.
+         * Useful for verifying calculations and troubleshooting.
+         * 
+         * Access: Press F12 or Ctrl+Shift+I to open developer console.
+         */
+    
+        console.log('='.repeat(60));
+        console.log('CELLULAR AUTOMATA WEBGL RENDERER - DEBUG INFO');
+        console.log('='.repeat(60));
+        console.log(`Grid dimensions:    ${GRID_COLS} columns × ${GRID_ROWS} rows`);
+        console.log(`Cell dimensions:    Width=${CELL_WIDTH.toFixed(4)}, Height=${CELL_HEIGHT.toFixed(4)}`);
+        console.log(`Grid aspect ratio:  ${(GRID_COLS/GRID_ROWS).toFixed(3)}`);  // <-- FIXED!
+        console.log(`Canvas dimensions:  ${canvas.width}px × ${canvas.height}px`);
+        console.log(`Canvas aspect ratio: ${(canvas.width/canvas.height).toFixed(3)}`);
+        console.log(`Applied scaling:    scaleX=${scaleX.toFixed(3)}, scaleY=${scaleY.toFixed(3)}`);
+        console.log(`Effective cell size:`);
+        console.log(`  After scale - Width: ${(CELL_WIDTH * scaleX).toFixed(4)}`);
+        console.log(`  After scale - Height: ${(CELL_HEIGHT * scaleY).toFixed(4)}`);
+        console.log(`Live cells found:   ${gatherLiveCells().length}`);
+        console.log(`Live cell colour:   RGBA(${LIVE_COLOUR.join(', ')})`);
+        console.log('='.repeat(60));
+
+        // =================================================================
+        // SECTION 17: EXECUTE RENDER
+        // =================================================================
+        /**
+         * Main render sequence:
+         *   1. Gather all live cells from grid
+         *   2. Build vertex data
+         *   3. Upload to GPU
+         *   4. Draw to screen
+         */
+        const liveCells = gatherLiveCells();
+        renderBatch(liveCells);
+
+        // =================================================================
+        // SECTION 18: OPTIONAL ANIMATION LOOP (COMMENTED OUT)
+        // =================================================================
+        /**
+         * Uncomment this section to add Game of Life evolution.
+         * Requires: evolveGrid() function implementing CA rules.
+         * 
+         * Usage:
+         *   - Remove comment markers (/* and *\/)
+         *   - Implement evolveGrid() below
+         *   - Browser console shows "Evolution started"
+         */
+        /*
+        function evolveGrid(oldGrid) {
+            /**
+             * GAME OF LIFE RULES IMPLEMENTATION
+             * 
+             * @param {number[][]} oldGrid - Previous generation
+             * @returns {number[][]} nextGeneration - New generation
+             * 
+             * RULES:
+             *   1. Any live cell with <2 or >3 live neighbours dies
+             *   2. Any dead cell with exactly 3 live neighbours becomes alive
+             *   3. All other cells stay in current state
+             * 
+             * NOTE: Boundary conditions (wrap-around vs dead edges)
+             *       Change based on your preference.
+             * /
+            const newGrid = [];
+            
+            // Create deep copy
+            for (let row = 0; row < oldGrid.length; row++) {
+                newGrid[row] = [...oldGrid[row]];
+            }
+            
+            // Count neighbours and apply rules
+            for (let row = 0; row < GRID_ROWS; row++) {
+                for (let col = 0; col < GRID_COLS; col++) {
+                    // Count live neighbours (8-connected)
+                    let liveNeighbours = 0;
+                    for (let dr = -1; dr <= 1; dr++) {
+                        for (let dc = -1; dc <= 1; dc++) {
+                            if (dr === 0 && dc === 0) continue; // Skip self
+                            
+                            // Wrap-around (toroidal) boundary
+                            const r = (row + dr + GRID_ROWS) % GRID_ROWS;
+                            const c = (col + dc + GRID_COLS) % GRID_COLS;
+                            
+                            liveNeighbours += oldGrid[r][c];
+                        }
+                    }
+                    
+                    // Apply Game of Life rules
+                    const isAlive = oldGrid[row][col] === 1;
+                    if (isAlive && (liveNeighbours < 2 || liveNeighbours > 3)) {
+                        newGrid[row][col] = 0;  // Dies
+                    } else if (!isAlive && liveNeighbours === 3) {
+                        newGrid[row][col] = 1;  // Born
+                    }
+                }
+            }
+            
+            return newGrid;
+        }
+
+        // Animation loop function
+        function animate() {
+            // Evolve grid to next generation
+            grid = evolveGrid(grid);
+            
+            // Clear screen
+            gl.clearColor(1.0, 1.0, 1.0, 1.0);
+            gl.clear(gl.COLOR_BUFFER_BIT);
+            
+            // Re-render
+            const liveCells = gatherLiveCells();
+            renderBatch(liveCells);
+            
+            // Schedule next frame (typically 60 FPS)
+            requestAnimationFrame(animate);
+        }
+
+        // Start animation
+        animate();
+        */
+        
+        // =================================================================
+        // SECTION 19: INTERACTIVE FEATURES (OPTIONAL EXTENSIONS)
+        // =================================================================
+        /**
+         * EXAMPLE: Toggle cells with mouse click
+         * Uncomment to enable interactive grid editing.
+         * 
+         * @param {MouseEvent} event - Mouse click event
+         */
+        /*
+        canvas.addEventListener('click', (event) => {
+            // Get mouse position relative to canvas
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = event.clientX - rect.left;
+            const mouseY = event.clientY - rect.top;
+            
+            // Convert pixel coords to clip space
+            const clipX = (mouseX / canvas.width) * 2 - 1;
+            const clipY = 1 - (mouseY / canvas.height) * 2;  // Flip Y
+            
+            // Convert clip space to grid coordinates
+            const gridCol = Math.floor((clipX + 1) / CELL_WIDTH);
+            const gridRow = Math.floor((1 - clipY) / CELL_HEIGHT);
+            
+            // Validate bounds
+            if (gridRow >= 0 && gridRow < GRID_ROWS &&
+                gridCol >= 0 && gridCol < GRID_COLS) {
+                // Toggle cell state
+                grid[gridRow][gridCol] = grid[gridRow][gridCol] ? 0 : 1;
+                
+                // Re-render
+                const liveCells = gatherLiveCells();
+                gl.clearColor(1.0, 1.0, 1.0, 1.0);
+                gl.clear(gl.COLOR_BUFFER_BIT);
+                renderBatch(liveCells);
+            }
+        });
+        */
+    </script>
+</body>
+</html>
