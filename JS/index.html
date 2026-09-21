@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Simple Template</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: system-ui, -apple-system, sans-serif;
+      line-height: 1.6;
+    }
+    .container {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    pre {
+      background: #f4f4f4;
+      padding: 12px;
+      overflow-x: auto;
+      border-radius: 4px;
+    }
+    code {
+      font-family: ui-monospace, SFMono-Regular, monospace;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Web Worker</h1>
+    <p>A web worker is an external JavaScript file that runs in the background, independently of other scripts, without affecting the performance of the page</p>
+
+<h4>demo_worker.js</h4>
+    <pre>
+    	<code>
+var i = 0;
+var step = 1
+function timedCount() {
+  i+=step;
+  postMessage({type: "count", value:i});
+  setTimeout("timedCount()",500);
+}
+
+onmessage = function(e) {
+ 	switch (e.data.type) {
+    	case "setStep":
+     		step = e.data.value;
+      		break;
+    	case "getStep":
+      		postMessage({ type: "step", value: step });
+      		break;
+     }
+};
+
+
+
+timedCount(); 
+    	</code>
+    </pre>
+
+<h4>js in script</h4>
+    <pre>
+    	<code>
+
+const output = document.getElementById("result");
+var step = 1;
+
+w = new Worker("demo_worker.js")
+w.onmessage = function(e) {
+  switch (e.data.type) {
+    case "count":
+      output.innerHTML = event.data.value;
+      break;
+    case "step":
+      step = e.data.value;
+      break;
+  }
+};
+
+function incStep(){
+	w.postMessage({type: "getStep"});
+	step++;
+	w.postMessage({ type: "setStep", value:step});
+}
+    	</code>
+    </pre>
+
+<button onclick="incStep()">inc step</button>
+ <p>Count numbers: <output id="result"></output></p>
+
+  </div>
+
+  <script>
+
+const output = document.getElementById("result");
+var step = 1;
+
+w = new Worker("demo_worker.js")
+w.onmessage = function(e) {
+  switch (e.data.type) {
+    case "count":
+      output.innerHTML = event.data.value;
+      break;
+    case "step":
+      step = e.data.value;
+      break;
+  }
+};
+
+function incStep(){
+	w.postMessage({type: "getStep"});
+	step++;
+	w.postMessage({ type: "setStep", value:step});
+} 
+  </script>
+</body>
+</html>
