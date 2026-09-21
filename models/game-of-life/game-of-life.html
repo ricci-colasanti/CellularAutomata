@@ -140,10 +140,12 @@
     function init() {
       caCanvas.resizeAndReset();
       gridInstance = new Grid(caCanvas.cols, caCanvas.rows);
+      
 
       // Create agent in each cell with randomized initial strategy
       const rows = gridInstance.rows;
       const cols = gridInstance.cols;
+      console.log("*",rows,cols)
 
       for (let y = 0; y < rows; y++) {
         for (let x = 0; x < cols; x++) {

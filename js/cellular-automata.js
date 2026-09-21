@@ -39,13 +39,15 @@ export class Cell {
   }
 }
 
-export default class Grid {
+export class Grid {
   constructor(cols, rows) {
+    console.log(cols,rows);
     this.cols = cols;
     this.rows = rows;
     this.cells = [];
 
     this.init();
+    
   }
 
   xBounds(x) {
@@ -68,6 +70,7 @@ export default class Grid {
   }
 
   setNeighbours() {
+    console.log(this.rows)
     for (let y = 0; y < this.rows; y++) {
       for (let x = 0; x < this.cols; x++) {
         for (let yy = y - 1; yy <= y + 1; yy++) {

@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Simple Template</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: system-ui, -apple-system, sans-serif;
+      line-height: 1.6;
+    }
+
+    .container {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+
+    pre {
+      background: #f4f4f4;
+      padding: 12px;
+      overflow-x: auto;
+      border-radius: 4px;
+    }
+
+    code {
+      font-family: ui-monospace, SFMono-Regular, monospace;
+    }
+
+    canvas {
+      border: 2px solid #444;
+    }
+
+    button {
+      margin-right: 8px;
+      padding: 6px 12px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <h1>Web Worker GOL</h1>
+    <p></p>
+
+    <canvas id="testCanvas"></canvas>
+
+  </div>
+
+<script>
+  const canvas = document.getElementById("testCanvas");
+  canvas.width = 1000;
+  canvas.height = 300;
+
+  const offscreen = canvas.transferControlToOffscreen();
+  const worker = new Worker("gol_worker.js", { type: "module" });
+
+  worker.onerror = (err) => {
+    console.error("Worker error:", err.message, err.filename, err.lineno);
+  };
+
+  worker.postMessage({ type: "initCanvas", canvas: offscreen }, [offscreen]);
+  worker.postMessage({ type: "start" });
+</script>
+</body>
+
+</html>

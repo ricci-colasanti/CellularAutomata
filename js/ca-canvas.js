@@ -20,7 +20,7 @@
  *   ca.resizeAndReset();
  *   ca.drawSquareAt(3, 4, "red");
  */
-export default class CACanvas {
+export  class CACanvas {
   /**
    * @param {HTMLCanvasElement} canvas  The `<canvas>` element to draw on.
    * @param {number} [ofHeight=100]     Target number of rows to fit
@@ -51,6 +51,32 @@ export default class CACanvas {
 
     /** @type {number} Number of rows, derived from viewport height. */
     this.rows = 0;
+    const width = this.canvas.width;
+    const height = this.canvas.height;
+
+    // Step 2: Compute an INTEGER cell size in pixels.
+    // Using Math.floor ensures:
+    //   • All cells are whole pixels → no blurry anti-aliased edges
+    //   • Exactly `ofHeight` rows fit within the canvas height
+    //   • We may leave a few unused pixels at bottom/right (intentional)
+    this.cellSize = Math.floor(height / this.ofHeight);
+
+    // Step 3: Calculate grid dimensions (number of columns and rows)
+    // that fit within the available width/height using the fixed cellSize.
+    this.cols = Math.floor(width / this.cellSize);
+    this.rows = Math.floor(height / this.cellSize);
+
+    // Step 4: Set the canvas INTERNAL BUFFER resolution.
+    // IMPORTANT: Canvas .width/.height differ from CSS width/height!
+    // - CSS size controls how big it looks on screen
+    // - .width/.height control the drawing buffer (pixels available to ctx)
+    // Setting them to exact cellSize multiples avoids sub-pixel gaps.
+    this.canvas.width = this.cols * this.cellSize;
+    this.canvas.height = this.rows * this.cellSize;
+
+    // Step 5: Clear everything to default background.
+    // This prepares a clean slate for drawing the new grid.
+    this.clear("#eeeeee");
   }
 
   /**
@@ -84,32 +110,7 @@ export default class CACanvas {
     // clientWidth/clientHeight reflect what the user sees (includes margins,
     // padding, borders but excludes scrollbars). This respects your CSS:
     //   width: 80%, margin-left: 10%, aspect-ratio: 1 / 1, etc.
-    const width = this.canvas.clientWidth;
-    const height = this.canvas.clientHeight;
 
-    // Step 2: Compute an INTEGER cell size in pixels.
-    // Using Math.floor ensures:
-    //   • All cells are whole pixels → no blurry anti-aliased edges
-    //   • Exactly `ofHeight` rows fit within the canvas height
-    //   • We may leave a few unused pixels at bottom/right (intentional)
-    this.cellSize = Math.floor(height / this.ofHeight);
-
-    // Step 3: Calculate grid dimensions (number of columns and rows)
-    // that fit within the available width/height using the fixed cellSize.
-    this.cols = Math.floor(width / this.cellSize);
-    this.rows = Math.floor(height / this.cellSize);
-
-    // Step 4: Set the canvas INTERNAL BUFFER resolution.
-    // IMPORTANT: Canvas .width/.height differ from CSS width/height!
-    // - CSS size controls how big it looks on screen
-    // - .width/.height control the drawing buffer (pixels available to ctx)
-    // Setting them to exact cellSize multiples avoids sub-pixel gaps.
-    this.canvas.width = this.cols * this.cellSize;
-    this.canvas.height = this.rows * this.cellSize;
-
-    // Step 5: Clear everything to default background.
-    // This prepares a clean slate for drawing the new grid.
-    this.clear("#eeeeee");
   }
 
   // Optional: Helper to attach resize listener
