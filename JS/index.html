@@ -1,122 +1,248 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Simple Template</title>
   <style>
     * {
       box-sizing: border-box;
     }
+
     body {
       margin: 0;
       padding: 0;
       font-family: system-ui, -apple-system, sans-serif;
       line-height: 1.6;
     }
+
     .container {
       max-width: 960px;
       margin: 0 auto;
       padding: 20px;
     }
+
     pre {
       background: #f4f4f4;
       padding: 12px;
       overflow-x: auto;
       border-radius: 4px;
     }
+
     code {
       font-family: ui-monospace, SFMono-Regular, monospace;
     }
+
+    canvas {
+      border: 2px solid #444;
+    }
+
+    button {
+      margin-right: 8px;
+      padding: 6px 12px;
+      cursor: pointer;
+    }
   </style>
 </head>
+
 <body>
   <div class="container">
     <h1>Web Worker</h1>
-    <p>A web worker is an external JavaScript file that runs in the background, independently of other scripts, without affecting the performance of the page</p>
+    <p>A web worker is an external JavaScript file that runs in the background, independently of other scripts, without
+      affecting the performance of the page</p>
 
-<h4>demo_worker.js</h4>
+    <h4>demo_worker.js</h4>
     <pre>
     	<code>
+importScripts("ball.js");
+
 var i = 0;
-var step = 1
-function timedCount() {
-  i+=step;
-  postMessage({type: "count", value:i});
-  setTimeout("timedCount()",500);
-}
-
-onmessage = function(e) {
- 	switch (e.data.type) {
-    	case "setStep":
-     		step = e.data.value;
-      		break;
-    	case "getStep":
-      		postMessage({ type: "step", value: step });
-      		break;
-     }
-};
-
-
-
-timedCount(); 
-    	</code>
-    </pre>
-
-<h4>js in script</h4>
-    <pre>
-    	<code>
-
-const output = document.getElementById("result");
 var step = 1;
 
-w = new Worker("demo_worker.js")
-w.onmessage = function(e) {
+var canvas = null;
+var ctx = null;
+var W = 0, H = 0;
+var ball = null;
+
+var lastTime = 0;
+var animationId = null;
+
+function loop(timestamp) {
+  if (lastTime === 0) lastTime = timestamp;
+  var dt = (timestamp - lastTime) / 1000;
+  lastTime = timestamp;
+
+  i += step;
+  postMessage({ type: "count", value: i });
+
+  if (ctx) {
+    ctx.clearRect(0, 0, W, H);
+    ball.update(W, H, dt);
+    ball.draw(ctx);
+  }
+
+  animationId = self.requestAnimationFrame(loop);
+}
+
+onmessage = function (e) {
   switch (e.data.type) {
-    case "count":
-      output.innerHTML = event.data.value;
+    case "initCanvas":
+      canvas = e.data.canvas;
+      ctx = canvas.getContext("2d");
+      W = canvas.width;
+      H = canvas.height;
+      ball = new Ball(W / 2, H / 2, 180, 120, 15);
       break;
-    case "step":
+
+    case "start":
+      if (animationId === null) {
+        lastTime = 0;
+        animationId = self.requestAnimationFrame(loop);
+      }
+      break;
+
+    case "stop":
+      if (animationId !== null) {
+        self.cancelAnimationFrame(animationId);
+        animationId = null;
+      }
+      break;
+
+    case "setStep":
       step = e.data.value;
+      break;
+
+    case "getStep":
+      postMessage({ type: "step", value: step });
+      break;
+
+    case "incStep":
+      step++;
+      postMessage({ type: "step", value: step });
       break;
   }
 };
+    	</code>
+    </pre>
+    <h4>ball.js</h4>
+    <pre>
+    	<code>
+class Ball {
+  constructor(x, y, dx, dy, radius) {
+    this.x = x;
+    this.y = y;
+    this.dx = dx;
+    this.dy = dy;
+    this.radius = radius;
+  }
 
-function incStep(){
-	w.postMessage({type: "getStep"});
-	step++;
-	w.postMessage({ type: "setStep", value:step});
+  update(W, H, dt) {
+    this.x += this.dx * dt;
+    this.y += this.dy * dt;
+
+    if (this.x - this.radius < 0 || this.x + this.radius > W) this.dx *= -1;
+    if (this.y - this.radius < 0 || this.y + this.radius > H) this.dy *= -1;
+  }
+
+  draw(ctx) {
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+    ctx.fillStyle = "red";
+    ctx.fill();
+  }
 }
     	</code>
     </pre>
 
-<button onclick="incStep()">inc step</button>
- <p>Count numbers: <output id="result"></output></p>
+    <h4>js in script</h4>
+    <pre>
+    	<code>
+    const output = document.getElementById("result");
+    var step = 1;
+
+    const canvas = document.getElementById("testCanvas");
+    canvas.width = 400;
+    canvas.height = 300;
+
+    const offscreen = canvas.transferControlToOffscreen();
+    const worker = new Worker("demo_worker.js");
+
+    worker.postMessage({ type: "initCanvas", canvas: offscreen }, [offscreen]);
+    worker.postMessage({ type: "start" });
+
+    worker.onmessage = function (e) {
+      switch (e.data.type) {
+        case "count":
+          output.innerHTML = e.data.value;
+          break;
+        case "step":
+          step = e.data.value;
+          break;
+      }
+    };
+
+    function startWorker() {
+      worker.postMessage({ type: "start" });
+    }
+
+    function stopWorker() {
+      worker.postMessage({ type: "stop" });
+    }
+
+    function incStep() {
+      worker.postMessage({ type: "incStep" });
+    }
+    	</code>
+    </pre>
+
+    <button onclick="startWorker()">start</button>
+    <button onclick="stopWorker()">stop</button>
+    <button onclick="incStep()">inc step</button>
+    <p>Count numbers: <output id="result"></output></p>
+    <canvas id="testCanvas"></canvas>
 
   </div>
 
   <script>
 
-const output = document.getElementById("result");
-var step = 1;
+    const output = document.getElementById("result");
+    var step = 1;
 
-w = new Worker("demo_worker.js")
-w.onmessage = function(e) {
-  switch (e.data.type) {
-    case "count":
-      output.innerHTML = event.data.value;
-      break;
-    case "step":
-      step = e.data.value;
-      break;
-  }
-};
+    const canvas = document.getElementById("testCanvas");
+    canvas.width = 400;
+    canvas.height = 300;
 
-function incStep(){
-	w.postMessage({type: "getStep"});
-	step++;
-	w.postMessage({ type: "setStep", value:step});
-} 
+    const offscreen = canvas.transferControlToOffscreen();
+    const worker = new Worker("demo_worker.js");
+
+    worker.postMessage({ type: "initCanvas", canvas: offscreen }, [offscreen]);
+    worker.postMessage({ type: "start" });
+
+    worker.onmessage = function (e) {
+      switch (e.data.type) {
+        case "count":
+          output.innerHTML = e.data.value;
+          break;
+        case "step":
+          step = e.data.value;
+          break;
+      }
+    };
+
+    function startWorker() {
+      worker.postMessage({ type: "start" });
+    }
+
+    function stopWorker() {
+      worker.postMessage({ type: "stop" });
+    }
+
+    function incStep() {
+      worker.postMessage({ type: "incStep" });
+    }
+
   </script>
 </body>
+
 </html>
