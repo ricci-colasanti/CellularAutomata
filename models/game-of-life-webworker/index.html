@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Simple Template</title>
   <style>
+    * {
+      box-sizing: border-box;
+    }
 
     body {
       margin: 0;
@@ -14,65 +16,97 @@
       line-height: 1.6;
     }
 
-
-    canvas {
-      display: block;
-      width: 100%;
-      height: auto;
-      min-height: 300px;
+    .container {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 20px;
+      background-color: #fdfdfd;
     }
 
+    pre {
+      background: #f4f4f4;
+      padding: 12px;
+      overflow-x: auto;
+      border-radius: 4px;
+    }
 
+    code {
+      font-family: ui-monospace, SFMono-Regular, monospace;
+    }
+
+    a {
+      text-decoration: none;
+    }
+
+    .full_screen_canvas {
+      width: 100vw;
+      height: 100vh;
+      display: block;
+    }
+
+    .windowed_canvas {
+      /* This is the *desired* size. The worker will shrink it to fit
+         an integer grid. Leave it here as a starting hint. */
+      width: 700px;
+      height: 400px;
+      display: block;
+      background: #eee;
+        margin: 0 auto;
+    }
   </style>
 </head>
 
 <body>
+  <div class="container">
+    <canvas class="windowed_canvas" id="testCanvas"></canvas>
+  </div>
 
+  <script type="module">
+    document.addEventListener("DOMContentLoaded", () => {
+      const canvas = document.getElementById("testCanvas");
 
-    <canvas id="testCanvas"></canvas>
+      // OffscreenCanvas: the worker owns the drawing buffer.
+      const offscreen = canvas.transferControlToOffscreen();
+      const worker = new Worker("gol_worker.js", { type: "module" });
 
+      worker.onerror = (err) => {
+        console.error("Worker error:", err.message, err.filename, err.lineno);
+      };
 
-<script>
-// Wait for DOM to be fully loaded before accessing canvas
-document.addEventListener('DOMContentLoaded', () => {
-  const canvas = document.getElementById("testCanvas");
-  
-  // Set canvas dimensions AFTER it's in the layout
-  function resizeCanvas() {
-    const rect = canvas.getBoundingClientRect();
-    canvas.width = rect.width || 1000;
-    canvas.height = rect.height || 300;
-    
-    // Re-initialize worker with new dimensions if needed
-    if (window.golWorkerInitialized) {
-      window.golWorker.postMessage({ 
-        type: "resize", 
-        width: canvas.width, 
-        height: canvas.height 
+      // The worker tells us the real buffer size; we match CSS to it so
+      // the browser doesn't stretch the buffer across a different shape.
+      worker.onmessage = (e) => {
+        if (e.data.type === "sizeChanged") {
+          canvas.style.width  = e.data.width  + "px";
+          canvas.style.height = e.data.height + "px";
+        }
+      };
+
+      // Read the CSS size (not window size!) and tell the worker.
+      const rect = canvas.getBoundingClientRect();
+
+      worker.postMessage({
+        type: "initCanvas",
+        canvas: offscreen,
+        desiredWidth:  Math.round(rect.width),
+        desiredHeight: Math.round(rect.height),
+        yCells: 111,
+      }, [offscreen]);
+
+      worker.postMessage({ type: "start" });
+
+      // On real resizes, ask the worker to refit.
+      // (For a fixed-size "windowed" canvas you can skip this, but it's
+      //  harmless and useful for the full-screen variant.)
+      window.addEventListener("resize", () => {
+        const r = canvas.getBoundingClientRect();
+        worker.postMessage({
+          type: "resize",
+          width:  Math.round(r.width),
+          height: Math.round(r.height),
+        });
       });
-    }
-  }
-
-  // Initial sizing
-  resizeCanvas();
-
-  // Listen for window resize events
-  window.addEventListener('resize', resizeCanvas);
-
-  const offscreen = canvas.transferControlToOffscreen();
-  const worker = new Worker("gol_worker.js", { type: "module" });
-
-  worker.onerror = (err) => {
-    console.error("Worker error:", err.message, err.filename, err.lineno);
-  };
-
-  worker.postMessage({ type: "initCanvas", canvas: offscreen }, [offscreen]);
-  worker.postMessage({ type: "start" });
-
-  // Mark worker as initialized
-  window.golWorkerInitialized = true;
-  window.golWorker = worker;
-});
-</script>
+    });
+  </script>
 </body>
 </html>
