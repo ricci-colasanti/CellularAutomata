@@ -53,60 +53,107 @@
       background: #eee;
         margin: 0 auto;
     }
+
+    #checkbox-grid {
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  gap: 4px;
+  margin-top: 20px;
+  max-width: fit-content;
+}
+
+#checkbox-grid input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+}
+
+#checkbox-grid label {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
   </style>
 </head>
 
 <body>
   <div class="container">
     <canvas class="windowed_canvas" id="testCanvas"></canvas>
+    
+    <br>
+<div id="checkbox-grid"></div>
   </div>
 
-  <script type="module">
-    document.addEventListener("DOMContentLoaded", () => {
-      const canvas = document.getElementById("testCanvas");
+ <script type="module">
+  document.addEventListener("DOMContentLoaded", () => {
+    const canvas = document.getElementById("testCanvas");
 
-      // OffscreenCanvas: the worker owns the drawing buffer.
-      const offscreen = canvas.transferControlToOffscreen();
-      const worker = new Worker("gol_worker.js", { type: "module" });
+    // OffscreenCanvas: the worker owns the drawing buffer.
+    const offscreen = canvas.transferControlToOffscreen();
+    const worker = new Worker("gol_worker.js", { type: "module" });
 
-      worker.onerror = (err) => {
-        console.error("Worker error:", err.message, err.filename, err.lineno);
-      };
+    worker.onerror = (err) => {
+      console.error("Worker error:", err.message, err.filename, err.lineno);
+    };
 
-      // The worker tells us the real buffer size; we match CSS to it so
-      // the browser doesn't stretch the buffer across a different shape.
-      worker.onmessage = (e) => {
-        if (e.data.type === "sizeChanged") {
-          canvas.style.width  = e.data.width  + "px";
-          canvas.style.height = e.data.height + "px";
-        }
-      };
+    // The worker tells us the real buffer size; we match CSS to it so
+    // the browser doesn't stretch the buffer across a different shape.
+    worker.onmessage = (e) => {
+      if (e.data.type === "sizeChanged") {
+        canvas.style.width  = e.data.width  + "px";
+        canvas.style.height = e.data.height + "px";
+      }
+    };
 
-      // Read the CSS size (not window size!) and tell the worker.
-      const rect = canvas.getBoundingClientRect();
+    // Read the CSS size (not window size!) and tell the worker.
+    const rect = canvas.getBoundingClientRect();
 
+    worker.postMessage({
+      type: "initCanvas",
+      canvas: offscreen,
+      desiredWidth:  Math.round(rect.width),
+      desiredHeight: Math.round(rect.height),
+      yCells: 111,
+    }, [offscreen]);
+
+    worker.postMessage({ type: "start" });
+
+    // On real resizes, ask the worker to refit.
+    window.addEventListener("resize", () => {
+      const r = canvas.getBoundingClientRect();
       worker.postMessage({
-        type: "initCanvas",
-        canvas: offscreen,
-        desiredWidth:  Math.round(rect.width),
-        desiredHeight: Math.round(rect.height),
-        yCells: 111,
-      }, [offscreen]);
-
-      worker.postMessage({ type: "start" });
-
-      // On real resizes, ask the worker to refit.
-      // (For a fixed-size "windowed" canvas you can skip this, but it's
-      //  harmless and useful for the full-screen variant.)
-      window.addEventListener("resize", () => {
-        const r = canvas.getBoundingClientRect();
-        worker.postMessage({
-          type: "resize",
-          width:  Math.round(r.width),
-          height: Math.round(r.height),
-        });
+        type: "resize",
+        width:  Math.round(r.width),
+        height: Math.round(r.height),
       });
     });
-  </script>
+
+    // ===== NEW: Generate 10x10 checkbox grid =====
+    const gridContainer = document.getElementById('checkbox-grid');
+    const gridSize = 10;
+
+    for (let i = 0; i < gridSize * gridSize; i++) {
+      const wrapper = document.createElement('label');
+      wrapper.style.display = 'inline-flex';
+      wrapper.style.alignItems = 'center';
+      wrapper.style.margin = '2px';
+      wrapper.style.cursor = 'pointer';
+
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.dataset.index = i;
+
+      checkbox.addEventListener('change', () => {
+        const row = Math.floor(i / gridSize);
+        const col = i % gridSize;
+        console.log(`Checkbox ${i} (row:${row}, col:${col}) is ${checkbox.checked ? 'checked' : 'unchecked'}`);
+      });
+
+      wrapper.appendChild(checkbox);
+      gridContainer.appendChild(wrapper);
+    }
+  });
+</script>
 </body>
 </html>
