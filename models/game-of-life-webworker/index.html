@@ -17,48 +17,50 @@
       line-height: 1.6;
     }
 
-    .container {
-      max-width: 960px;
-      margin: 0 auto;
-      padding: 20px;
-    }
-
-    pre {
-      background: #f4f4f4;
-      padding: 12px;
-      overflow-x: auto;
-      border-radius: 4px;
-    }
-
-    code {
-      font-family: ui-monospace, SFMono-Regular, monospace;
-    }
 
     canvas {
-      border: 2px solid #444;
+      display: block;
+      width: 100%;
+      height: auto;
+      min-height: 300px;
     }
 
-    button {
-      margin-right: 8px;
-      padding: 6px 12px;
-      cursor: pointer;
-    }
+
   </style>
 </head>
 
 <body>
-  <div class="container">
-    <h1>Web Worker GOL</h1>
-    <p></p>
+
 
     <canvas id="testCanvas"></canvas>
 
-  </div>
 
 <script>
+// Wait for DOM to be fully loaded before accessing canvas
+document.addEventListener('DOMContentLoaded', () => {
   const canvas = document.getElementById("testCanvas");
-  canvas.width = 1000;
-  canvas.height = 300;
+  
+  // Set canvas dimensions AFTER it's in the layout
+  function resizeCanvas() {
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = rect.width || 1000;
+    canvas.height = rect.height || 300;
+    
+    // Re-initialize worker with new dimensions if needed
+    if (window.golWorkerInitialized) {
+      window.golWorker.postMessage({ 
+        type: "resize", 
+        width: canvas.width, 
+        height: canvas.height 
+      });
+    }
+  }
+
+  // Initial sizing
+  resizeCanvas();
+
+  // Listen for window resize events
+  window.addEventListener('resize', resizeCanvas);
 
   const offscreen = canvas.transferControlToOffscreen();
   const worker = new Worker("gol_worker.js", { type: "module" });
@@ -69,7 +71,11 @@
 
   worker.postMessage({ type: "initCanvas", canvas: offscreen }, [offscreen]);
   worker.postMessage({ type: "start" });
+
+  // Mark worker as initialized
+  window.golWorkerInitialized = true;
+  window.golWorker = worker;
+});
 </script>
 </body>
-
 </html>

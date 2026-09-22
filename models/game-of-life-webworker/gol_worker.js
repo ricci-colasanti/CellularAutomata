@@ -32,9 +32,9 @@ const R_PENTO = [
   [0, -1], [1, -1],  // was middle row
   [1, -2]            // was bottom row
 ];
-const yMax = 120;
+const yMax = 161;
 
-var STEP_INTERVAL = 0.01;   // seconds between simulation steps (≈6.6 Hz)
+var STEP_INTERVAL = 0.025;   // seconds between simulation steps (≈6.6 Hz)
 var accumulator = 0;
 
 
